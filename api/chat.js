@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-  // 1. CORS Headers
+  // 1. CORS Headers (Damit dein Spiel zugreifen darf)
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -8,27 +8,27 @@ export default async function handler(req, res) {
     'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
   );
 
-  // 2. Preflight
+  // 2. Preflight Anfrage beantworten
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  // 3. POST Check
+  // 3. Nur POST erlauben
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  // API Key prüfen
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: "Server Fehler: GEMINI_API_KEY fehlt" });
+    return res.status(500).json({ error: "Server Fehler: GEMINI_API_KEY fehlt in Vercel" });
   }
 
   try {
     const { message } = req.body;
 
-    // --- ÄNDERUNG: WIR NEHMEN "gemini-pro" STATT "flash" ---
-    // Das ist das stabilste Standard-Modell
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
+    // --- WICHTIGE ÄNDERUNG: Wir nutzen die stabile Version "v1" ---
+    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
     
     const response = await fetch(url, {
       method: 'POST',
@@ -37,23 +37,21 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         contents: [{
-          parts: [{ text: `Du bist ein lustiger Party-Spiel-Bot. Antworte kurz. User Nachricht: ${message}` }]
+          parts: [{ text: `Du bist ein lustiger Party-Spiel-Bot. Antworte kurz und knapp (max 2 Sätze). User Nachricht: ${message}` }]
         }]
       })
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      // Wir geben den genauen Google Fehler zurück, damit wir ihn sehen
       throw new Error(`Google API Fehler: ${response.status} - ${errorData}`);
     }
 
     const data = await response.json();
     
-    // Antwort extrahieren
-    // Fallback, falls die Struktur mal anders ist
-    let reply = "Keine Antwort.";
-    if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+    // Antwort auslesen
+    let reply = "Keine Antwort von der KI.";
+    if (data.candidates && data.candidates.length > 0 && data.candidates[0].content) {
         reply = data.candidates[0].content.parts[0].text;
     }
 
@@ -61,7 +59,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error("Backend Error:", error);
-    // Der Fehler wird an dein Minispiel geschickt
     return res.status(500).json({ error: error.message });
   }
 }
