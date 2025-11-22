@@ -1,7 +1,5 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
 export default async function handler(req, res) {
-  // 1. CORS Headers (damit der Browser zugreifen darf)
+  // 1. CORS Headers (Standard)
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -10,7 +8,7 @@ export default async function handler(req, res) {
     'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
   );
 
-  // 2. Preflight-Anfrage (OPTIONS) sofort mit OK beantworten
+  // 2. Preflight Anfrage beantworten
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
@@ -20,29 +18,44 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // WICHTIG: Key prüfen
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(500).json({ error: "Server Fehler: GEMINI_API_KEY fehlt" });
+  // API Key prüfen
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: "Server Fehler: GEMINI_API_KEY fehlt in Vercel" });
   }
 
   try {
     const { message } = req.body;
 
-    // Google Gemini initialisieren
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    // Wir nutzen "gemini-1.5-flash", das ist schnell und kostenlos
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // --- HIER IST DER TRICK: DIREKTER AUFRUF OHNE BIBLIOTHEK ---
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: `Du bist ein lustiger Party-Spiel-Bot. Antworte kurz. User Nachricht: ${message}` }]
+        }]
+      })
+    });
 
-    // Prompt senden
-    const prompt = `Du bist ein lustiger Party-Spiel-Bot. Antworte kurz. User Nachricht: ${message}`;
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(`Google API Fehler: ${response.status} - ${errorData}`);
+    }
 
-    return res.status(200).json({ text: text });
+    const data = await response.json();
+    
+    // Die Antwort aus der komplexen Google-Struktur holen
+    const reply = data.candidates[0].content.parts[0].text;
+
+    return res.status(200).json({ text: reply });
 
   } catch (error) {
-    console.error("Gemini Error:", error);
-    return res.status(500).json({ error: "Fehler bei der KI-Anfrage" });
+    console.error("Backend Error:", error);
+    return res.status(500).json({ error: error.message || "Fehler im Backend" });
   }
 }
