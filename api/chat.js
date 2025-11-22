@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-  // 1. CORS Headers (Standard)
+  // 1. CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -8,27 +8,27 @@ export default async function handler(req, res) {
     'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
   );
 
-  // 2. Preflight Anfrage beantworten
+  // 2. Preflight
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  // 3. Nur POST erlauben
+  // 3. POST Check
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // API Key prüfen
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: "Server Fehler: GEMINI_API_KEY fehlt in Vercel" });
+    return res.status(500).json({ error: "Server Fehler: GEMINI_API_KEY fehlt" });
   }
 
   try {
     const { message } = req.body;
 
-    // --- HIER IST DER TRICK: DIREKTER AUFRUF OHNE BIBLIOTHEK ---
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    // --- ÄNDERUNG: WIR NEHMEN "gemini-pro" STATT "flash" ---
+    // Das ist das stabilste Standard-Modell
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`;
     
     const response = await fetch(url, {
       method: 'POST',
@@ -44,18 +44,24 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const errorData = await response.text();
+      // Wir geben den genauen Google Fehler zurück, damit wir ihn sehen
       throw new Error(`Google API Fehler: ${response.status} - ${errorData}`);
     }
 
     const data = await response.json();
     
-    // Die Antwort aus der komplexen Google-Struktur holen
-    const reply = data.candidates[0].content.parts[0].text;
+    // Antwort extrahieren
+    // Fallback, falls die Struktur mal anders ist
+    let reply = "Keine Antwort.";
+    if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+        reply = data.candidates[0].content.parts[0].text;
+    }
 
     return res.status(200).json({ text: reply });
 
   } catch (error) {
     console.error("Backend Error:", error);
-    return res.status(500).json({ error: error.message || "Fehler im Backend" });
+    // Der Fehler wird an dein Minispiel geschickt
+    return res.status(500).json({ error: error.message });
   }
 }
