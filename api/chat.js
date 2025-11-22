@@ -1,27 +1,26 @@
-// api/chat.js
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY, // Der Key kommt aus den Vercel Settings
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 export default async function handler(req, res) {
-  // 1. CORS Headers setzen (WICHTIG, sonst blockiert der Browser)
+  // 1. WICHTIG: CORS Headers setzen, damit der Browser nicht blockiert
   res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*'); // '*' erlaubt Zugriff von überall. Für Produktion besser deine URL eintragen.
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader(
     'Access-Control-Allow-Headers',
     'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
   );
 
-  // 2. Browser "Preflight" Anfrage beantworten
+  // 2. ENTSCHEIDEND: Die "Test-Anfrage" (OPTIONS) sofort mit OK (200) beantworten
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
   }
 
-  // 3. Nur POST Anfragen erlauben
+  // 3. Prüfen ob es ein POST ist
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
@@ -29,18 +28,16 @@ export default async function handler(req, res) {
   try {
     const { message } = req.body;
 
-    // 4. Anfrage an OpenAI senden
     const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo", // Oder "gpt-4" wenn du Zugriff hast
+      model: "gpt-3.5-turbo",
       messages: [
-        { role: "system", content: "Du bist ein lustiger Party-Spiel-Bot." },
+        { role: "system", content: "Du bist ein lustiger Party-Spiel-Bot. Antworte kurz und knapp." },
         { role: "user", content: message }
       ],
     });
 
-    // 5. Antwort zurücksenden
     const reply = completion.choices[0].message.content;
-    return res.status(200).json({ text: reply }); // Wir senden { text: ... } zurück
+    return res.status(200).json({ text: reply });
 
   } catch (error) {
     console.error("OpenAI Error:", error);
